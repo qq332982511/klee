@@ -14,7 +14,7 @@ ENV LLVM_VERSION=3.4 \
     KLEE_SRC=/home/klee/klee_src \
     COVERAGE=0 \
     BUILD_DIR=/home/klee/klee_build
-
+RUN add-apt-repository ppa:george-edison55/cmake-3.x
 RUN apt-get update && \
     apt-get -y --no-install-recommends install \
         clang-${LLVM_VERSION} \
@@ -25,7 +25,7 @@ RUN apt-get update && \
         libcap-dev \
         git \
         subversion \
-        cmake-${LLVM_VERSION}\
+        cmake\
         make \
         libboost-program-options-dev \
         python3 \
