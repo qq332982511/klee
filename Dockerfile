@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:14.04
 MAINTAINER Dan Liew <daniel.liew@imperial.ac.uk>
 
 # FIXME: Docker doesn't currently offer a way to
@@ -25,7 +25,7 @@ RUN apt-get update && \
         libcap-dev \
         git \
         subversion \
-        cmake \
+        cmake-${LLVM_VERSION}\
         make \
         libboost-program-options-dev \
         python3 \
