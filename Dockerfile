@@ -14,7 +14,7 @@ ENV LLVM_VERSION=3.4 \
     KLEE_SRC=/home/klee/klee_src \
     COVERAGE=0 \
     BUILD_DIR=/home/klee/klee_build
-RUN apt-get update
+RUN apt update
 RUN apt-get -y --no-install-recommends install python-software-properties
 RUN add-apt-repository ppa:george-edison55/cmake-3.x
 RUN apt-get update && \
