@@ -15,8 +15,8 @@ ENV LLVM_VERSION=3.4 \
     COVERAGE=0 \
     BUILD_DIR=/home/klee/klee_build
 RUN apt update
-RUN apt-get -y --no-install-recommends install python-software-properties
-RUN add-apt-repository ppa:george-edison55/cmake-3.x
+RUN apt-get -y install software-properties-common
+RUN add-apt-repository -y ppa:george-edison55/cmake-3.x
 RUN apt-get update && \
     apt-get -y --no-install-recommends install \
         clang-${LLVM_VERSION} \
