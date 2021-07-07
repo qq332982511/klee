@@ -1,4 +1,4 @@
-// RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t1.bc
+// RUN: %clang %s -emit-llvm %O0opt -c -o %t1.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --optimize=false --output-dir=%t.klee-out %t1.bc
 // RUN: grep "total queries = 2" %t.klee-out/info
@@ -8,7 +8,7 @@
 int main() {
   unsigned char x, y;
 
-  klee_make_symbolic(&x, sizeof x);
+  klee_make_symbolic(&x, sizeof x, "x");
   
   y = x;
 

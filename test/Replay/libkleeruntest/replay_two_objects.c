@@ -1,4 +1,4 @@
-// RUN: %llvmgcc %s -emit-llvm -g -O0 -c -o %t.bc
+// RUN: %clang %s -emit-llvm -g %O0opt -c -o %t.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --search=dfs %t.bc 2>&1 | FileCheck %s
 // RUN: test -f %t.klee-out/test000001.ktest
@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
   int x = 0;
   int y = 0;
   klee_make_symbolic(&x, sizeof(x), "x");
-  klee_make_symbolic(&y, sizeof(x), "y");
+  klee_make_symbolic(&y, sizeof(y), NULL);
 
   klee_assume(x == 1);
   klee_assume(y == 128);

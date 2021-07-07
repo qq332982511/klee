@@ -1,4 +1,5 @@
-.git
+#.git - Don't delete git, we need that to generate the correct version number
 autom4te.cache
 **/.*.swp
 Dockerfile
+cmake-*/

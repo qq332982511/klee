@@ -10,6 +10,8 @@
 #ifndef KLEE_SPECIALFUNCTIONHANDLER_H
 #define KLEE_SPECIALFUNCTIONHANDLER_H
 
+#include "klee/Config/config.h"
+
 #include <iterator>
 #include <map>
 #include <vector>
@@ -77,7 +79,10 @@ namespace klee {
     /// prepared for execution. At the moment this involves deleting
     /// unused function bodies and marking intrinsics with appropriate
     /// flags for use in optimizations.
-    void prepare();
+    ///
+    /// @param preservedFunctions contains all the function names which should
+    /// be preserved during optimization
+    void prepare(std::vector<const char *> &preservedFunctions);
 
     /// Initialize the internal handler map after the module has been
     /// prepared for execution.
@@ -106,8 +111,12 @@ namespace klee {
     HANDLER(handleDefineFixedObject);
     HANDLER(handleDelete);    
     HANDLER(handleDeleteArray);
+#ifdef SUPPORT_KLEE_EH_CXX
+    HANDLER(handleEhUnwindRaiseExceptionImpl);
+    HANDLER(handleEhTypeid);
+#endif
+    HANDLER(handleErrnoLocation);
     HANDLER(handleExit);
-    HANDLER(handleAliasFunction);
     HANDLER(handleFree);
     HANDLER(handleGetErrno);
     HANDLER(handleGetObjSize);
@@ -115,8 +124,10 @@ namespace klee {
     HANDLER(handleIsSymbolic);
     HANDLER(handleMakeSymbolic);
     HANDLER(handleMalloc);
+    HANDLER(handleMemalign);
     HANDLER(handleMarkGlobal);
-    HANDLER(handleMerge);
+    HANDLER(handleOpenMerge);
+    HANDLER(handleCloseMerge);
     HANDLER(handleNew);
     HANDLER(handleNewArray);
     HANDLER(handlePreferCex);
@@ -141,4 +152,4 @@ namespace klee {
   };
 } // End klee namespace
 
-#endif
+#endif /* KLEE_SPECIALFUNCTIONHANDLER_H */

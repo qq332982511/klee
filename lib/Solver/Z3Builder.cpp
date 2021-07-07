@@ -10,11 +10,11 @@
 #ifdef ENABLE_Z3
 #include "Z3Builder.h"
 
-#include "klee/Expr.h"
-#include "klee/Solver.h"
-#include "klee/util/Bits.h"
-#include "ConstantDivision.h"
-#include "klee/SolverStats.h"
+#include "klee/ADT/Bits.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Solver/Solver.h"
+#include "klee/Solver/SolverStats.h"
+#include "klee/Support/ErrorHandling.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
@@ -24,8 +24,24 @@ using namespace klee;
 namespace {
 llvm::cl::opt<bool> UseConstructHashZ3(
     "use-construct-hash-z3",
-    llvm::cl::desc("Use hash-consing during Z3 query construction."),
-    llvm::cl::init(true));
+    llvm::cl::desc("Use hash-consing during Z3 query construction (default=true)"),
+    llvm::cl::init(true),
+    llvm::cl::cat(klee::ExprCat));
+
+// FIXME: This should be std::atomic<bool>. Need C++11 for that.
+bool Z3InterationLogOpen = false;
+}
+
+namespace klee {
+
+// Declared here rather than `Z3Builder.h` so they can be called in gdb.
+template <> void Z3NodeHandle<Z3_sort>::dump() {
+  llvm::errs() << "Z3SortHandle:\n" << ::Z3_sort_to_string(context, node)
+               << "\n";
+}
+template <> void Z3NodeHandle<Z3_ast>::dump() {
+  llvm::errs() << "Z3ASTHandle:\n" << ::Z3_ast_to_string(context, as_ast())
+               << "\n";
 }
 
 void custom_z3_error_handler(Z3_context ctx, Z3_error_code ec) {
@@ -45,6 +61,9 @@ void custom_z3_error_handler(Z3_context ctx, Z3_error_code ec) {
   }
   llvm::errs() << "Error: Incorrect use of Z3. [" << ec << "] " << errorMsg
                << "\n";
+  // NOTE: The current implementation of `Z3_close_log()` can be safely
+  // called even if the log isn't open.
+  Z3_close_log();
   abort();
 }
 
@@ -55,8 +74,17 @@ void Z3ArrayExprHash::clear() {
   _array_hash.clear();
 }
 
-Z3Builder::Z3Builder(bool autoClearConstructCache)
-    : autoClearConstructCache(autoClearConstructCache) {
+Z3Builder::Z3Builder(bool autoClearConstructCache, const char* z3LogInteractionFileArg)
+    : autoClearConstructCache(autoClearConstructCache), z3LogInteractionFile("") {
+  if (z3LogInteractionFileArg)
+    this->z3LogInteractionFile = std::string(z3LogInteractionFileArg);
+  if (z3LogInteractionFile.length() > 0) {
+    klee_message("Logging Z3 API interaction to \"%s\"",
+                 z3LogInteractionFile.c_str());
+    assert(!Z3InterationLogOpen && "interaction log should not already be open");
+    Z3_open_log(z3LogInteractionFile.c_str());
+    Z3InterationLogOpen = true;
+  }
   // FIXME: Should probably let the client pass in a Z3_config instead
   Z3_config cfg = Z3_mk_config();
   // It is very important that we ask Z3 to let us manage memory so that
@@ -74,7 +102,12 @@ Z3Builder::~Z3Builder() {
   // they aren associated with.
   clearConstructCache();
   _arr_hash.clear();
+  constant_array_assertions.clear();
   Z3_del_context(ctx);
+  if (z3LogInteractionFile.length() > 0) {
+    Z3_close_log();
+    Z3InterationLogOpen = false;
+  }
 }
 
 Z3SortHandle Z3Builder::getBvSort(unsigned width) {
@@ -359,26 +392,27 @@ Z3ASTHandle Z3Builder::getInitialArray(const Array *root) {
   if (!hashed) {
     // Unique arrays by name, so we make sure the name is unique by
     // using the size of the array hash as a counter.
-    std::string unique_id = llvm::itostr(_arr_hash._array_hash.size());
-    unsigned const uid_length = unique_id.length();
-    unsigned const space = (root->name.length() > 32 - uid_length)
-                               ? (32 - uid_length)
-                               : root->name.length();
-    std::string unique_name = root->name.substr(0, space) + unique_id;
+    std::string unique_id = llvm::utostr(_arr_hash._array_hash.size());
+    std::string unique_name = root->name + unique_id;
 
     array_expr = buildArray(unique_name.c_str(), root->getDomain(),
                             root->getRange());
 
-    if (root->isConstantArray()) {
-      // FIXME: Flush the concrete values into Z3. Ideally we would do this
-      // using assertions, which might be faster, but we need to fix the caching
-      // to work correctly in that case.
+    if (root->isConstantArray() && constant_array_assertions.count(root) == 0) {
+      std::vector<Z3ASTHandle> array_assertions;
       for (unsigned i = 0, e = root->size; i != e; ++i) {
-        Z3ASTHandle prev = array_expr;
-        array_expr = writeExpr(
-            prev, construct(ConstantExpr::alloc(i, root->getDomain()), 0),
-            construct(root->constantValues[i], 0));
+        // construct(= (select i root) root->value[i]) to be asserted in
+        // Z3Solver.cpp
+        int width_out;
+        Z3ASTHandle array_value =
+            construct(root->constantValues[i], &width_out);
+        assert(width_out == (int)root->getRange() &&
+               "Value doesn't match root range");
+        array_assertions.push_back(
+            eqExpr(readExpr(array_expr, bvConst32(root->getDomain(), i)),
+                   array_value));
       }
+      constant_array_assertions[root] = std::move(array_assertions);
     }
 
     _arr_hash.hashArrayExpr(root, array_expr);
@@ -401,7 +435,7 @@ Z3ASTHandle Z3Builder::getArrayForUpdate(const Array *root,
     bool hashed = _arr_hash.lookupUpdateNodeExpr(un, un_expr);
 
     if (!hashed) {
-      un_expr = writeExpr(getArrayForUpdate(root, un->next),
+      un_expr = writeExpr(getArrayForUpdate(root, un->next.get()),
                           construct(un->index, 0), construct(un->value, 0));
 
       _arr_hash.hashUpdateNodeExpr(un, un_expr);
@@ -484,7 +518,7 @@ Z3ASTHandle Z3Builder::constructActual(ref<Expr> e, int *width_out) {
     ReadExpr *re = cast<ReadExpr>(e);
     assert(re && re->updates.root);
     *width_out = re->updates.root->getRange();
-    return readExpr(getArrayForUpdate(re->updates.root, re->updates.head),
+    return readExpr(getArrayForUpdate(re->updates.root, re->updates.head.get()),
                     construct(re->index, 0));
   }
 
@@ -529,6 +563,7 @@ Z3ASTHandle Z3Builder::constructActual(ref<Expr> e, int *width_out) {
     if (srcWidth == 1) {
       return iteExpr(src, bvOne(*width_out), bvZero(*width_out));
     } else {
+      assert(*width_out > srcWidth && "Invalid width_out");
       return Z3ASTHandle(Z3_mk_concat(ctx, bvZero(*width_out - srcWidth), src),
                          ctx);
     }
@@ -621,12 +656,15 @@ Z3ASTHandle Z3Builder::constructActual(ref<Expr> e, int *width_out) {
         uint64_t divisor = CE->getZExtValue();
 
         if (bits64::isPowerOfTwo(divisor)) {
-          unsigned bits = bits64::indexOfSingleBit(divisor);
+          // FIXME: This should be unsigned but currently needs to be signed to
+          // avoid signed-unsigned comparison in assert.
+          int bits = bits64::indexOfSingleBit(divisor);
 
           // special case for modding by 1 or else we bvExtract -1:0
           if (bits == 0) {
             return bvZero(*width_out);
           } else {
+            assert(*width_out > bits && "invalid width_out");
             return Z3ASTHandle(Z3_mk_concat(ctx, bvZero(*width_out - bits),
                                             bvExtract(left, bits - 1, 0)),
                                ctx);
@@ -815,5 +853,6 @@ Z3ASTHandle Z3Builder::constructActual(ref<Expr> e, int *width_out) {
     assert(0 && "unhandled Expr type");
     return getTrue();
   }
+}
 }
 #endif // ENABLE_Z3

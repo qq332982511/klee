@@ -1,4 +1,7 @@
-// RUN: %llvmgcc %s -emit-llvm -g -O0 -c -o %t1.bc
+// REQUIRES: not-msan
+// Requires instrumented zlib linked
+// REQUIRES: zlib
+// RUN: %clang %s -emit-llvm -g %O0opt -c -o %t1.bc
 // We disable the cex-cache to eliminate nondeterminism across different
 // solvers, in particular when counting the number of queries in the last two
 // commands
@@ -16,7 +19,7 @@ int constantArr[16] = {1 << 0,  1 << 1,  1 << 2,  1 << 3, 1 << 4,  1 << 5,
 
 int main() {
   char buf[4];
-  klee_make_symbolic(buf, sizeof buf);
+  klee_make_symbolic(buf, sizeof buf, "buf");
 
   buf[1] = 'a';
 

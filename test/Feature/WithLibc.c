@@ -1,4 +1,4 @@
-// RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t2.bc
+// RUN: %clang %s -emit-llvm %O0opt -c -o %t2.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --libc=klee %t2.bc > %t3.log
 // RUN: echo "good" > %t3.good
@@ -8,7 +8,7 @@ int main() {
   char buf[4];
   char *s = "foo";
 
-  klee_make_symbolic(buf, sizeof buf);
+  klee_make_symbolic(buf, sizeof buf, "buf");
   buf[3] = 0;
 
   if (strcmp(buf, s)==0) {

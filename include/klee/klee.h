@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===*/
 
-#ifndef __KLEE_H__
-#define __KLEE_H__
+#ifndef KLEE_H
+#define KLEE_H
 
 #include "stdint.h"
 #include "stddef.h"
@@ -16,7 +16,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-  
+
   /* Add an accesible memory object at a user specified location. It
    * is the users responsibility to make sure that these memory
    * objects do not overlap. These memory objects will also
@@ -31,16 +31,16 @@ extern "C" {
    * \arg addr - The start of the object.
    * \arg nbytes - The number of bytes to make symbolic; currently this *must*
    * be the entire contents of the object.
-   * \arg name - An optional name, used for identifying the object in messages,
-   * output files, etc.
+   * \arg name - A name used for identifying the object in messages, output
+   * files, etc. If NULL, object is called "unnamed".
    */
   void klee_make_symbolic(void *addr, size_t nbytes, const char *name);
 
   /* klee_range - Construct a symbolic value in the signed interval
    * [begin,end).
    *
-   * \arg name - An optional name, used for identifying the object in messages,
-   * output files, etc.
+   * \arg name - A name used for identifying the object in messages, output
+   * files, etc. If NULL, object is called "unnamed".
    */
   int klee_range(int begin, int end, const char *name);
 
@@ -74,18 +74,18 @@ extern "C" {
 			 int line, 
 			 const char *message, 
 			 const char *suffix);
-  
+
   /* called by checking code to get size of memory. */
   size_t klee_get_obj_size(void *ptr);
-  
+
   /* print the tree associated w/ a given expression. */
   void klee_print_expr(const char *msg, ...);
-  
+
   /* NB: this *does not* fork n times and return [0,n) in children.
    * It makes n be symbolic and returns: caller must compare N times.
    */
   uintptr_t klee_choose(uintptr_t n);
-  
+
   /* special klee assert macro. this assert should be used when path consistency
    * across platforms is desired (e.g., in tests).
    * NB: __assert_fail is a klee "special" function
@@ -101,6 +101,12 @@ extern "C" {
    * mode.
    */
   unsigned klee_is_symbolic(uintptr_t n);
+
+
+  /* Return true if replaying a concrete test case using the libkleeRuntime library
+   * Return false if executing symbolically in KLEE.
+   */
+  unsigned klee_is_replay(void);
 
 
   /* The following intrinsics are primarily intended for internal use
@@ -130,7 +136,7 @@ extern "C" {
      accessible to the program. If some byte in the range is not
      accessible an error will be generated and the state
      terminated. 
-  
+
      The current implementation requires both address and size to be
      constants and that the range lie within a single object. */
   void klee_check_memory_access(const void *address, size_t size);
@@ -138,24 +144,22 @@ extern "C" {
   /* Enable/disable forking. */
   void klee_set_forking(unsigned enable);
 
-  /* klee_alias_function("foo", "bar") will replace, at runtime (on
-     the current path and all paths spawned on the current path), all
-     calls to foo() by calls to bar().  foo() and bar() have to exist
-     and have identical types.  Use klee_alias_function("foo", "foo")
-     to undo.  Be aware that some special functions, such as exit(),
-     may not always work. */
-  void klee_alias_function(const char* fn_name, const char* new_fn_name);
-
   /* Print stack trace. */
   void klee_stack_trace(void);
 
   /* Print range for given argument and tagged with name */
   void klee_print_range(const char * name, int arg );
 
-  /* Merge current states together if possible */
-  void klee_merge();
+  /* Open a merge */
+  void klee_open_merge(void);
+
+  /* Merge all paths of the state that went through klee_open_merge */
+  void klee_close_merge(void);
+
+  /* Get errno value of the current state */
+  int klee_get_errno(void);
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __KLEE_H__ */
+#endif /* KLEE_H */

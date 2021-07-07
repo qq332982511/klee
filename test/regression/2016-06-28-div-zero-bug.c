@@ -1,4 +1,4 @@
-// RUN: %llvmgcc %s -emit-llvm -g -O0 -c -o %t.bc
+// RUN: %clang %s -emit-llvm -g %O0opt -c -o %t.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --use-cex-cache=false %t.bc >%t1.log
 
@@ -15,7 +15,7 @@ int safe_div(short p1, int p2) {
 }
 
 int main() {
-  klee_make_symbolic(&b, sizeof b);
+  klee_make_symbolic(&b, sizeof b, "b");
   if (safe_div(*c, 0))
     *f = (int)&b % *c;
 
