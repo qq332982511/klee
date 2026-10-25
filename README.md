@@ -1,7 +1,8 @@
 KLEE Symbolic Virtual Machine
 =============================
 
-[![Build Status](https://travis-ci.org/klee/klee.svg?branch=master)](https://travis-ci.org/klee/klee)
+[![Build Status](https://github.com/klee/klee/workflows/CI/badge.svg)](https://github.com/klee/klee/actions?query=workflow%3ACI)
+[![Coverage](https://codecov.io/gh/klee/klee/branch/master/graph/badge.svg)](https://codecov.io/gh/klee/klee)
 
 `KLEE` is a symbolic virtual machine built on top of the LLVM compiler
 infrastructure. Currently, there are two primary components:
@@ -22,6 +23,4 @@ environment that matches a computed test input, including setting up
 files, pipes, environment variables, and passing command line
 arguments.
 
-Coverage information can be found [here](http://vm-klee.doc.ic.ac.uk:55555/index.html).
-
-For further information, see the [webpage](http://klee.github.io/).
+For further information, see the [webpage](https://klee-se.org/).

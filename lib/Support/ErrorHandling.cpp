@@ -7,10 +7,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/Support/ErrorHandling.h"
+#include "klee/Config/Version.h"
+#include "klee/Support/CompilerWarning.h"
+DISABLE_WARNING_PUSH
+DISABLE_WARNING_DEPRECATED_DECLARATIONS
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
+DISABLE_WARNING_POP
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -31,22 +36,28 @@ static const char *warningOncePrefix = "WARNING ONCE";
 static const char *errorPrefix = "ERROR";
 static const char *notePrefix = "NOTE";
 
+namespace klee {
+cl::OptionCategory MiscCat("Miscellaneous options", "");
+}
+
 namespace {
 cl::opt<bool> WarningsOnlyToFile(
     "warnings-only-to-file", cl::init(false),
     cl::desc("All warnings will be written to warnings.txt only.  If disabled, "
-             "they are also written on screen."));
-}
+             "they are also written on screen."),
+    cl::cat(MiscCat));
+} // namespace
 
 static bool shouldSetColor(const char *pfx, const char *msg,
                            const char *prefixToSearchFor) {
   if (pfx && strcmp(pfx, prefixToSearchFor) == 0)
     return true;
 
-  if (llvm::StringRef(msg).startswith(prefixToSearchFor))
-    return true;
-
-  return false;
+#if LLVM_VERSION_CODE >= LLVM_VERSION(16, 0)
+  return llvm::StringRef(msg).starts_with(prefixToSearchFor);
+#else
+  return llvm::StringRef(msg).startswith(prefixToSearchFor);
+#endif
 }
 
 static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,

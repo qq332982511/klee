@@ -7,27 +7,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/Internal/Support/PrintVersion.h"
+#include "klee/Support/PrintVersion.h"
 #include "klee/Config/config.h"
+#include "klee/Config/Version.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
 
 #include "klee/Config/CompileTimeInfo.h"
 
-void klee::printVersion()
-{
-  llvm::outs() << PACKAGE_STRING " (" PACKAGE_URL ")\n";
+void klee::printVersion(llvm::raw_ostream &OS) {
+  OS << PACKAGE_STRING " (" PACKAGE_URL ")\n";
 #ifdef KLEE_ENABLE_TIMESTAMP
-  llvm::outs() << "  Built " __DATE__ " (" __TIME__ ")\n";
+  OS << "  Built " __DATE__ " (" __TIME__ ")\n";
 #endif
-  llvm::outs() << "  Build mode: " << KLEE_BUILD_MODE "\n";
-  llvm::outs() << "  Build revision: ";
+  OS << "  Build mode: " << KLEE_BUILD_MODE "\n";
+  OS << "  Build revision: ";
 #ifdef KLEE_BUILD_REVISION
-  llvm::outs() << KLEE_BUILD_REVISION "\n";
+  OS << KLEE_BUILD_REVISION "\n";
 #else
-  llvm::outs() << "unknown\n";
+  OS << "unknown\n";
 #endif
   // Show LLVM version information
-  llvm::outs() << "\n";
+  OS << "\n";
   llvm::cl::PrintVersionMessage();
 }

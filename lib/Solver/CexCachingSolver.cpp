@@ -7,51 +7,55 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/Solver.h"
+#include "klee/Solver/Solver.h"
 
-#include "klee/Constraints.h"
-#include "klee/Expr.h"
-#include "klee/SolverImpl.h"
-#include "klee/TimerStatIncrementer.h"
-#include "klee/util/Assignment.h"
-#include "klee/util/ExprUtil.h"
-#include "klee/util/ExprVisitor.h"
-#include "klee/Internal/ADT/MapOfSets.h"
-
-#include "klee/SolverStats.h"
-
-#include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/ADT/MapOfSets.h"
+#include "klee/Expr/Assignment.h"
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Expr/ExprUtil.h"
+#include "klee/Expr/ExprVisitor.h"
+#include "klee/Support/OptionCategories.h"
+#include "klee/Statistics/TimerStatIncrementer.h"
+#include "klee/Solver/SolverImpl.h"
+#include "klee/Solver/SolverStats.h"
+#include "klee/Support/ErrorHandling.h"
 
 #include "llvm/Support/CommandLine.h"
+
+#include <memory>
+#include <utility>
 
 using namespace klee;
 using namespace llvm;
 
 namespace {
-  cl::opt<bool>
-  DebugCexCacheCheckBinding("debug-cex-cache-check-binding");
+cl::opt<bool> DebugCexCacheCheckBinding(
+    "debug-cex-cache-check-binding", cl::init(false),
+    cl::desc("Debug the correctness of the counterexample "
+             "cache assignments (default=false)"),
+    cl::cat(SolvingCat));
 
-  cl::opt<bool>
-  CexCacheTryAll("cex-cache-try-all",
-                 cl::desc("try substituting all counterexamples before asking the SMT solver"),
-                 cl::init(false));
+cl::opt<bool>
+    CexCacheTryAll("cex-cache-try-all", cl::init(false),
+                   cl::desc("Try substituting all counterexamples before "
+                            "asking the SMT solver (default=false)"),
+                   cl::cat(SolvingCat));
 
-  cl::opt<bool>
-  CexCacheSuperSet("cex-cache-superset",
-                 cl::desc("try substituting SAT super-set counterexample before asking the SMT solver (default=false)"),
-                 cl::init(false));
+cl::opt<bool>
+    CexCacheSuperSet("cex-cache-superset", cl::init(false),
+                     cl::desc("Try substituting SAT superset counterexample "
+                              "before asking the SMT solver (default=false)"),
+                     cl::cat(SolvingCat));
 
-  cl::opt<bool>
-  CexCacheExperimental("cex-cache-exp", cl::init(false));
-
-}
+} // namespace
 
 ///
 
 typedef std::set< ref<Expr> > KeyType;
 
 struct AssignmentLessThan {
-  bool operator()(const Assignment *a, const Assignment *b) {
+  bool operator()(const Assignment *a, const Assignment *b) const {
     return a->bindings < b->bindings;
   }
 };
@@ -60,7 +64,7 @@ struct AssignmentLessThan {
 class CexCachingSolver : public SolverImpl {
   typedef std::set<Assignment*, AssignmentLessThan> assignmentsTable_ty;
 
-  Solver *solver;
+  std::unique_ptr<Solver> solver;
   
   MapOfSets<ref<Expr>, Assignment*> cache;
   // memo table
@@ -79,19 +83,20 @@ class CexCachingSolver : public SolverImpl {
   bool getAssignment(const Query& query, Assignment *&result);
   
 public:
-  CexCachingSolver(Solver *_solver) : solver(_solver) {}
+  CexCachingSolver(std::unique_ptr<Solver> solver)
+      : solver(std::move(solver)) {}
   ~CexCachingSolver();
-  
-  bool computeTruth(const Query&, bool &isValid);
-  bool computeValidity(const Query&, Solver::Validity &result);
-  bool computeValue(const Query&, ref<Expr> &result);
-  bool computeInitialValues(const Query&,
-                            const std::vector<const Array*> &objects,
-                            std::vector< std::vector<unsigned char> > &values,
-                            bool &hasSolution);
-  SolverRunStatus getOperationStatusCode();
-  char *getConstraintLog(const Query& query);
-  void setCoreSolverTimeout(double timeout);
+
+  bool computeTruth(const Query &, bool &isValid) override;
+  bool computeValidity(const Query &, Solver::Validity &result) override;
+  bool computeValue(const Query &, ref<Expr> &result) override;
+  bool computeInitialValues(const Query &,
+                            const std::vector<const Array *> &objects,
+                            std::vector<std::vector<unsigned char>> &values,
+                            bool &hasSolution) override;
+  SolverRunStatus getOperationStatusCode() override;
+  std::string getConstraintLog(const Query &query) override;
+  void setCoreSolverTimeout(time::Span timeout) override;
 };
 
 ///
@@ -117,7 +122,7 @@ struct NullOrSatisfyingAssignment {
 /// searchForAssignment - Look for a cached solution for a query.
 ///
 /// \param key - The query to look up.
-/// \param result [out] - The cached result, if the lookup is succesful. This is
+/// \param result [out] - The cached result, if the lookup is successful. This is
 /// either a satisfying assignment (for a satisfiable query), or 0 (for an
 /// unsatisfiable query).
 /// \return - True if a cached result was found.
@@ -186,7 +191,7 @@ bool CexCachingSolver::searchForAssignment(KeyType &key, Assignment *&result) {
 ///
 /// \param query - The query to lookup.
 /// \param key [out] - On return, the key constructed for the query.
-/// \param result [out] - The cached result, if the lookup is succesful. This is
+/// \param result [out] - The cached result, if the lookup is successful. This is
 /// either a satisfying assignment (for a satisfiable query), or 0 (for an
 /// unsatisfiable query).
 /// \return True if a cached result was found.
@@ -259,7 +264,6 @@ bool CexCachingSolver::getAssignment(const Query& query, Assignment *&result) {
 
 CexCachingSolver::~CexCachingSolver() {
   cache.clear();
-  delete solver;
   for (assignmentsTable_ty::iterator it = assignmentsTable.begin(), 
          ie = assignmentsTable.end(); it != ie; ++it)
     delete *it;
@@ -292,20 +296,6 @@ bool CexCachingSolver::computeValidity(const Query& query,
 bool CexCachingSolver::computeTruth(const Query& query,
                                     bool &isValid) {
   TimerStatIncrementer t(stats::cexCacheTime);
-
-  // There is a small amount of redundancy here. We only need to know
-  // truth and do not really need to compute an assignment. This means
-  // that we could check the cache to see if we already know that
-  // state ^ query has no assignment. In that case, by the validity of
-  // state, we know that state ^ !query must have an assignment, and
-  // so query cannot be true (valid). This does get hits, but doesn't
-  // really seem to be worth the overhead.
-
-  if (CexCacheExperimental) {
-    Assignment *a;
-    if (lookupAssignment(query.negateExpr(), a) && !a)
-      return false;
-  }
 
   Assignment *a;
   if (!getAssignment(query, a))
@@ -367,16 +357,18 @@ SolverImpl::SolverRunStatus CexCachingSolver::getOperationStatusCode() {
   return solver->impl->getOperationStatusCode();
 }
 
-char *CexCachingSolver::getConstraintLog(const Query& query) {
+std::string CexCachingSolver::getConstraintLog(const Query& query) {
   return solver->impl->getConstraintLog(query);
 }
 
-void CexCachingSolver::setCoreSolverTimeout(double timeout) {
+void CexCachingSolver::setCoreSolverTimeout(time::Span timeout) {
   solver->impl->setCoreSolverTimeout(timeout);
 }
 
 ///
 
-Solver *klee::createCexCachingSolver(Solver *_solver) {
-  return new Solver(new CexCachingSolver(_solver));
+std::unique_ptr<Solver>
+klee::createCexCachingSolver(std::unique_ptr<Solver> solver) {
+  return std::make_unique<Solver>(
+      std::make_unique<CexCachingSolver>(std::move(solver)));
 }

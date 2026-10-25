@@ -6,20 +6,21 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-klee_add_component(kleeCore
+add_library(kleeCore
   AddressSpace.cpp
+  MergeHandler.cpp
   CallPathManager.cpp
   Context.cpp
   CoreStats.cpp
   ExecutionState.cpp
+  ExecutionTree.cpp
+  ExecutionTreeWriter.cpp
   Executor.cpp
-  ExecutorTimers.cpp
   ExecutorUtil.cpp
   ExternalDispatcher.cpp
   ImpliedValue.cpp
   Memory.cpp
   MemoryManager.cpp
-  PTree.cpp
   Searcher.cpp
   SeedInfo.cpp
   SpecialFunctionHandler.cpp
@@ -28,23 +29,6 @@ klee_add_component(kleeCore
   UserSearcher.cpp
 )
 
-# TODO: Work out what the correct LLVM components are for
-# kleeCore.
-set(LLVM_COMPONENTS
-  core
-  support
-)
-
-if ("${LLVM_PACKAGE_VERSION}" VERSION_EQUAL "3.6" OR
-    "${LLVM_PACKAGE_VERSION}" VERSION_GREATER "3.6")
-  list(APPEND LLVM_COMPONENTS mcjit executionengine native)
-else()
-  list(APPEND LLVM_COMPONENTS jit engine)
-endif()
-
-
-klee_get_llvm_libs(LLVM_LIBS ${LLVM_COMPONENTS})
-target_link_libraries(kleeCore PUBLIC ${LLVM_LIBS})
 target_link_libraries(kleeCore PRIVATE
   kleeBasic
   kleeModule
@@ -52,3 +36,9 @@ target_link_libraries(kleeCore PRIVATE
   kleaverExpr
   kleeSupport
 )
+
+llvm_config(kleeCore "${USE_LLVM_SHARED}" core executionengine mcjit native support)
+target_link_libraries(kleeCore PRIVATE ${SQLite3_LIBRARIES})
+target_include_directories(kleeCore PRIVATE ${KLEE_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS} ${SQLite3_INCLUDE_DIRS})
+target_compile_options(kleeCore PRIVATE ${KLEE_COMPONENT_CXX_FLAGS})
+target_compile_definitions(kleeCore PRIVATE ${KLEE_COMPONENT_CXX_DEFINES})

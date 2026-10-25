@@ -1,4 +1,4 @@
-// RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t1.bc
+// RUN: %clang %s -emit-llvm %O0opt -c -o %t1.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --optimize=0 --exit-on-error %t1.bc > %t2.out
 
@@ -34,7 +34,10 @@ int main() {
 
   assert(N0 == 6);
   assert(N1 == 9);
-  assert(N2 == 13);
+  // This is the case on Apple Silicon
+  if (sizeof(long double) == sizeof(double))
+    assert(N2 == 9);
+  else assert(N2 == 13);
 
   return 0;
 }

@@ -1,9 +1,9 @@
-// RUN: %llvmgcc %s -emit-llvm -g -O0 -c -o %t.bc
+// RUN: %clang %s -emit-llvm -g %O0opt -c -o %t.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --libc=uclibc --posix-runtime %t.bc --sym-files 1 10  2>%t.log
 // RUN: rm -rf %t.klee-out-2
-// RUN: %klee --output-dir=%t.klee-out-2 --seed-out-dir=%t.klee-out --zero-seed-extension --libc=uclibc --posix-runtime %t.bc --sym-files 1 10 --max-fail 1
-// RUN: ls %t.klee-out-2 | grep -c assert | grep 4
+// RUN: %klee --output-dir=%t.klee-out-2 --seed-dir=%t.klee-out --allow-seed-extension --libc=uclibc --posix-runtime %t.bc --sym-files 1 10 --max-fail 1
+// RUN: ls %t.klee-out-2 | grep -c assert | grep 3
 
 #include <string.h>
 #include <assert.h>

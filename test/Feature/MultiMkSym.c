@@ -1,4 +1,4 @@
-// RUN: %llvmgcc -I../../../include -emit-llvm -g -c %s -o %t.bc
+// RUN: %clang -I../../../include -emit-llvm -g -c %s -o %t.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --write-kqueries %t.bc > %t.log
 // RUN: cat %t.klee-out/test000001.kquery %t.klee-out/test000002.kquery %t.klee-out/test000003.kquery %t.klee-out/test000004.kquery > %t1
@@ -6,7 +6,7 @@
 // RUN: grep "a\[100\]" %t1 | wc -l | grep 2
 
 /* Tests that the Array factory correctly distinguishes between arrays created at the same location but with different sizes */
-
+#include "klee/klee.h"
 #include <stdio.h>
 #include <stdlib.h>
 

@@ -1,18 +1,16 @@
 # CMake build system
 
-KLEE now has a CMake build system which is intended to replace
-its autoconf/Makefile based build system.
+KLEE has a CMake build system.
 
-## Useful top level targets
+## Useful top-level targets
 
 * `check` - Build and run all tests.
-* `clean` - Clean the build tree. Note this won't clean the runtime build.
-* `clean_runtime` - Clean the runtime build tree.
-* `docs` - Build documentation
-* `edit_cache` - Show cmake/ccmake/cmake-gui interface for chaning configure options.
-* `help` - Show list of top level targets
-* `systemtests` - Run system tests
-* `unittests` - Build and run unittests
+* `clean` - Clean the build tree.
+* `docs` - Build documentation.
+* `edit_cache` - Show cmake/ccmake/cmake-gui interface for changing configure options.
+* `help` - Show list of top-level targets.
+* `systemtests` - Build and run system tests.
+* `unittests` - Build and run unit tests.
 
 ## Useful CMake variables
 
@@ -41,7 +39,9 @@ cmake -DCMAKE_BUILD_TYPE=Release /path/to/klee/src
 
 * `ENABLE_KLEE_ASSERTS` (BOOLEAN) - Enable assertions when building KLEE.
 
-* `ENABLE_KLEE_UCLIBC` (BOOLEAN) - Enable support for klee-uclibc.
+* `ENABLE_KLEE_EH_CXX` (BOOLEAN) - Enable support for C++ Exceptions.
+
+* `ENABLE_KLEE_LIBCXX` (BOOLEAN) - Enable libc++ for klee.
 
 * `ENABLE_POSIX_RUNTIME` (BOOLEAN) - Enable POSIX runtime.
 
@@ -55,9 +55,22 @@ cmake -DCMAKE_BUILD_TYPE=Release /path/to/klee/src
 
 * `ENABLE_UNIT_TESTS` (BOOLEAN) - Enable KLEE unit tests.
 
-* `GTEST_SRC_DIR` (STRING) - Path to GTest source tree.
+* `ENABLE_ZLIB` (BOOLEAN) - Enable zlib support.
+
+* `GTEST_SRC_DIR` (STRING) - Path to Google Test source tree. If it is not
+   specified, CMake will try to reuse the version included within the LLVM
+   source tree or find a system installation of Google Test.
+
+* `GTEST_INCLUDE_DIR` (STRING) - Path to Google Test include directory,
+   if it is not under `GTEST_SRC_DIR`.
 
 * `KLEE_ENABLE_TIMESTAMP` (BOOLEAN) - Enable timestamps in KLEE sources.
+
+* `KLEE_LIBCXX_DIR` (STRING) - Path to directory containing libc++ shared object (bitcode).
+
+* `KLEE_LIBCXX_INCLUDE_DIR` (STRING) - Path to libc++ include directory.
+
+* `KLEE_LIBCXXABI_SRC_DIR` (STRING) - Path to libc++abi source directory.
 
 * `KLEE_UCLIBC_PATH` (STRING) - Path to klee-uclibc root directory.
 
@@ -68,11 +81,7 @@ cmake -DCMAKE_BUILD_TYPE=Release /path/to/klee/src
 
 * `LIT_ARGS` (STRING) - Semi-colon separated list of lit options.
 
-* `LLVM_CONFIG_BINARY` (STRING) - Path to `llvm-config` binary. This is
-   only relevant if `USE_CMAKE_FIND_PACKAGE_LLVM` is `FALSE`. This is used
-   to detect the LLVM version and find libraries.
-
-* `MAKE_BINARY` (STRING) - Path to `make` binary used to build KLEE's runtime.
+* `LLVM_DIR` (STRING) - Path to the target LLVM install directory
 
 * `metaSMT_DIR` (STRING) - Provides a hint to CMake, where the metaSMT constraint
   solver can be found.  This should be an absolute path to a directory
@@ -83,10 +92,5 @@ cmake -DCMAKE_BUILD_TYPE=Release /path/to/klee/src
   containing the file `STPConfig.cmake`. This file is installed by STP
   but also exists in its build directory. This allows KLEE to link
   against STP in a build directory or an installed copy.
-
-* `USE_CMAKE_FIND_PACKAGE_LLVM` (BOOLEAN) - Use `find_package(LLVM CONFIG)`
-   to find LLVM.
-
-* `USE_CXX11` (BOOLEAN) - Use C++11.
 
 * `WARNINGS_AS_ERRORS` (BOOLEAN) - Treat warnings as errors when building KLEE.

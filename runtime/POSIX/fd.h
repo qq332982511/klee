@@ -7,17 +7,50 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __EXE_FD__
-#define __EXE_FD__
+#ifndef KLEE_FD_H
+#define KLEE_FD_H
+
+#include "klee/Config/config.h"
 
 #ifndef _LARGEFILE64_SOURCE
 #error "_LARGEFILE64_SOURCE should be defined"
 #endif
-#include <sys/types.h>
-#include <sys/statfs.h>
-#include <dirent.h>
 
-typedef struct {  
+#if defined(__APPLE__) || defined(__FreeBSD__)
+#else
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#endif
+
+#include <dirent.h>
+#include <sys/types.h>
+
+#include <sys/stat.h>
+
+#ifdef __APPLE__
+#ifndef stat64
+#define stat64 stat
+#endif
+#include <sys/dtrace.h>
+#endif
+
+#ifdef __FreeBSD__
+#include "FreeBSD.h"
+#endif
+
+#if defined(__APPLE__) || defined(__FreeBSD__)
+#include <sys/mount.h>
+#include <sys/param.h>
+#if !defined(dirent64)
+#define dirent64 dirent
+#endif
+#else
+// Linux
+#include <sys/vfs.h>
+#endif
+
+typedef struct {
   unsigned size;  /* in bytes */
   char* contents;
   struct stat64* stat;
@@ -61,7 +94,6 @@ typedef struct {
 typedef struct {
   exe_file_t fds[MAX_FDS];
   mode_t umask; /* process umask */
-  unsigned version;
   /* If set, writes execute as expected.  Otherwise, writes extending
      the file size only change the contents up to the initial
      size. The file offset is always incremented correctly. */
@@ -88,4 +120,4 @@ int __fd_ftruncate(int fd, off64_t length);
 int __fd_statfs(const char *path, struct statfs *buf);
 int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count);
 
-#endif /* __EXE_FD__ */
+#endif /* KLEE_FD_H */

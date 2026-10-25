@@ -8,23 +8,17 @@
 //===----------------------------------------------------------------------===//
 
 
-#include "klee/Solver.h"
+#include "klee/Solver/Solver.h"
 
-#include "klee/Constraints.h"
-#include "klee/Expr.h"
-#include "klee/IncompleteSolver.h"
-#include "klee/SolverImpl.h"
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Solver/IncompleteSolver.h"
+#include "klee/Solver/SolverImpl.h"
+#include "klee/Solver/SolverStats.h"
 
-#include "klee/SolverStats.h"
-
-#include <ciso646>
-#ifdef _LIBCPP_VERSION
+#include <memory>
 #include <unordered_map>
-#define unordered_map std::unordered_map
-#else
-#include <tr1/unordered_map>
-#define unordered_map std::tr1::unordered_map
-#endif
+#include <utility>
 
 using namespace klee;
 
@@ -40,60 +34,59 @@ private:
                    IncompleteSolver::PartialValidity &result);
   
   struct CacheEntry {
-    CacheEntry(const ConstraintManager &c, ref<Expr> q)
-      : constraints(c), query(q) {}
+    CacheEntry(const ConstraintSet &c, ref<Expr> q)
+        : constraints(c), query(q) {}
 
     CacheEntry(const CacheEntry &ce)
       : constraints(ce.constraints), query(ce.query) {}
-    
-    ConstraintManager constraints;
+
+    ConstraintSet constraints;
     ref<Expr> query;
 
     bool operator==(const CacheEntry &b) const {
       return constraints==b.constraints && *query.get()==*b.query.get();
     }
   };
-  
+
   struct CacheEntryHash {
     unsigned operator()(const CacheEntry &ce) const {
       unsigned result = ce.query->hash();
-      
-      for (ConstraintManager::constraint_iterator it = ce.constraints.begin();
-           it != ce.constraints.end(); ++it)
-        result ^= (*it)->hash();
-      
+
+      for (auto const &constraint : ce.constraints) {
+        result ^= constraint->hash();
+      }
+
       return result;
     }
   };
 
-  typedef unordered_map<CacheEntry, 
-                        IncompleteSolver::PartialValidity, 
-                        CacheEntryHash> cache_map;
-  
-  Solver *solver;
+  typedef std::unordered_map<CacheEntry, IncompleteSolver::PartialValidity,
+                             CacheEntryHash>
+      cache_map;
+
+  std::unique_ptr<Solver> solver;
   cache_map cache;
 
 public:
-  CachingSolver(Solver *s) : solver(s) {}
-  ~CachingSolver() { cache.clear(); delete solver; }
+  CachingSolver(std::unique_ptr<Solver> solver) : solver(std::move(solver)) {}
 
-  bool computeValidity(const Query&, Solver::Validity &result);
-  bool computeTruth(const Query&, bool &isValid);
-  bool computeValue(const Query& query, ref<Expr> &result) {
+  bool computeValidity(const Query &, Solver::Validity &result) override;
+  bool computeTruth(const Query &, bool &isValid) override;
+  bool computeValue(const Query &query, ref<Expr> &result) override {
     ++stats::queryCacheMisses;
     return solver->impl->computeValue(query, result);
   }
-  bool computeInitialValues(const Query& query,
-                            const std::vector<const Array*> &objects,
-                            std::vector< std::vector<unsigned char> > &values,
-                            bool &hasSolution) {
+  bool computeInitialValues(const Query &query,
+                            const std::vector<const Array *> &objects,
+                            std::vector<std::vector<unsigned char>> &values,
+                            bool &hasSolution) override {
     ++stats::queryCacheMisses;
-    return solver->impl->computeInitialValues(query, objects, values, 
+    return solver->impl->computeInitialValues(query, objects, values,
                                               hasSolution);
   }
-  SolverRunStatus getOperationStatusCode();
-  char *getConstraintLog(const Query&);
-  void setCoreSolverTimeout(double timeout);
+  SolverRunStatus getOperationStatusCode() override;
+  std::string getConstraintLog(const Query &) override;
+  void setCoreSolverTimeout(time::Span timeout) override;
 };
 
 /** @returns the canonical version of the given query.  The reference
@@ -253,16 +246,18 @@ SolverImpl::SolverRunStatus CachingSolver::getOperationStatusCode() {
   return solver->impl->getOperationStatusCode();
 }
 
-char *CachingSolver::getConstraintLog(const Query& query) {
+std::string CachingSolver::getConstraintLog(const Query& query) {
   return solver->impl->getConstraintLog(query);
 }
 
-void CachingSolver::setCoreSolverTimeout(double timeout) {
+void CachingSolver::setCoreSolverTimeout(time::Span timeout) {
   solver->impl->setCoreSolverTimeout(timeout);
 }
 
 ///
 
-Solver *klee::createCachingSolver(Solver *_solver) {
-  return new Solver(new CachingSolver(_solver));
+std::unique_ptr<Solver>
+klee::createCachingSolver(std::unique_ptr<Solver> solver) {
+  return std::make_unique<Solver>(
+      std::make_unique<CachingSolver>(std::move(solver)));
 }

@@ -7,22 +7,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "expr/Parser.h"
-
-#include "expr/Lexer.h"
-
 #include "klee/Config/Version.h"
-#include "klee/Constraints.h"
-#include "klee/ExprBuilder.h"
-#include "klee/Solver.h"
-#include "klee/util/ExprPPrinter.h"
-#include "klee/util/ArrayCache.h"
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/ArrayCache.h"
+#include "klee/Expr/ExprBuilder.h"
+#include "klee/Expr/ExprPPrinter.h"
+#include "klee/Expr/Parser/Lexer.h"
+#include "klee/Expr/Parser/Parser.h"
+#include "klee/Solver/Solver.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
+#include <cstdlib>
 #include <map>
 #include <cstring>
 
@@ -998,11 +997,15 @@ ExprResult ParserImpl::ParseParenExpr(TypeResult FIXME_UNUSED) {
   case 2:
     return ParseBinaryParenExpr(Name, ExprKind, IsFixed, ResTy);
   case 3:
-    if (ExprKind == Expr::Select)
+    if (ExprKind == Expr::Select) {
       return ParseSelectParenExpr(Name, ResTy);
+    } else {
+      assert(false && "Invalid ternary expression kind.");
+      std::abort();
+    }
   default:
-    assert(0 && "Invalid argument kind (number of args).");
-    return ExprResult();
+    assert(false && "Invalid argument kind (number of args).");
+    std::abort();
   }
 }
 
@@ -1631,9 +1634,8 @@ void QueryCommand::dump() {
     ObjectsBegin = &Objects[0];
     ObjectsEnd = ObjectsBegin + Objects.size();
   }
-  ExprPPrinter::printQuery(llvm::outs(), ConstraintManager(Constraints),
-                           Query, ValuesBegin, ValuesEnd,
-                           ObjectsBegin, ObjectsEnd,
+  ExprPPrinter::printQuery(llvm::outs(), ConstraintSet(Constraints), Query,
+                           ValuesBegin, ValuesEnd, ObjectsBegin, ObjectsEnd,
                            false);
 }
 

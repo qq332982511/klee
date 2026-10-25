@@ -7,15 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Memory.h"
 #include "SeedInfo.h"
+
+#include "ExecutionState.h"
+#include "Memory.h"
 #include "TimingSolver.h"
 
-#include "klee/ExecutionState.h"
-#include "klee/Expr.h"
-#include "klee/util/ExprUtil.h"
-#include "klee/Internal/ADT/KTest.h"
-#include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/ADT/KTest.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Expr/ExprUtil.h"
+#include "klee/ADT/KTest.h"
+#include "klee/Support/ErrorHandling.h"
 
 using namespace klee;
 
@@ -60,10 +62,9 @@ KTestObject *SeedInfo::getNextInput(const MemoryObject *mo,
 void SeedInfo::patchSeed(const ExecutionState &state, 
                          ref<Expr> condition,
                          TimingSolver *solver) {
-  std::vector< ref<Expr> > required(state.constraints.begin(),
-                                    state.constraints.end());
-  ExecutionState tmp(required);
-  tmp.addConstraint(condition);
+  ConstraintSet required(state.constraints);
+  ConstraintManager cm(required);
+  cm.addConstraint(condition);
 
   // Try and patch direct reads first, this is likely to resolve the
   // problem quickly and avoids long traversal of all seed
@@ -73,49 +74,47 @@ void SeedInfo::patchSeed(const ExecutionState &state,
   std::set< std::pair<const Array*, unsigned> > directReads;
   std::vector< ref<ReadExpr> > reads;
   findReads(condition, false, reads);
-  for (std::vector< ref<ReadExpr> >::iterator it = reads.begin(), 
-         ie = reads.end(); it != ie; ++it) {
-    ReadExpr *re = it->get();
+  for (auto const &re : reads) {
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(re->index)) {
       directReads.insert(std::make_pair(re->updates.root, 
                                         (unsigned) CE->getZExtValue(32)));
     }
   }
-  
-  for (std::set< std::pair<const Array*, unsigned> >::iterator
-         it = directReads.begin(), ie = directReads.end(); it != ie; ++it) {
-    const Array *array = it->first;
-    unsigned i = it->second;
+
+  for (auto const &[array, i] : directReads) {
     ref<Expr> read = ReadExpr::create(UpdateList(array, 0),
                                       ConstantExpr::alloc(i, Expr::Int32));
     
-    // If not in bindings then this can't be a violation?
-    Assignment::bindings_ty::iterator it2 = assignment.bindings.find(array);
-    if (it2 != assignment.bindings.end()) {
+    // If not in bindings, then this can't be a violation?
+    auto a = assignment.bindings.find(array);
+    if (a != assignment.bindings.end()) {
       ref<Expr> isSeed = EqExpr::create(read, 
-                                        ConstantExpr::alloc(it2->second[i], 
+                                        ConstantExpr::alloc(a->second[i],
                                                             Expr::Int8));
       bool res;
-      bool success = solver->mustBeFalse(tmp, isSeed, res);
+      bool success =
+          solver->mustBeFalse(required, isSeed, res, state.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
         ref<ConstantExpr> value;
-        bool success = solver->getValue(tmp, read, value);
+        bool success =
+            solver->getValue(required, read, value, state.queryMetaData);
         assert(success && "FIXME: Unhandled solver failure");            
         (void) success;
-        it2->second[i] = value->getZExtValue(8);
-        tmp.addConstraint(EqExpr::create(read, 
-                                         ConstantExpr::alloc(it2->second[i], 
-                                                             Expr::Int8)));
+        a->second[i] = value->getZExtValue(8);
+        cm.addConstraint(EqExpr::create(
+            read, ConstantExpr::alloc(a->second[i], Expr::Int8)));
       } else {
-        tmp.addConstraint(isSeed);
+        cm.addConstraint(isSeed);
       }
     }
   }
 
   bool res;
-  bool success = solver->mayBeTrue(state, assignment.evaluate(condition), res);
+  bool success =
+      solver->mayBeTrue(state.constraints, assignment.evaluate(condition), res,
+                        state.queryMetaData);
   assert(success && "FIXME: Unhandled solver failure");
   (void) success;
   if (res)
@@ -133,20 +132,21 @@ void SeedInfo::patchSeed(const ExecutionState &state,
                                         ConstantExpr::alloc(it->second[i], 
                                                             Expr::Int8));
       bool res;
-      bool success = solver->mustBeFalse(tmp, isSeed, res);
+      bool success =
+          solver->mustBeFalse(required, isSeed, res, state.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
         ref<ConstantExpr> value;
-        bool success = solver->getValue(tmp, read, value);
+        bool success =
+            solver->getValue(required, read, value, state.queryMetaData);
         assert(success && "FIXME: Unhandled solver failure");            
         (void) success;
         it->second[i] = value->getZExtValue(8);
-        tmp.addConstraint(EqExpr::create(read, 
-                                         ConstantExpr::alloc(it->second[i], 
-                                                             Expr::Int8)));
+        cm.addConstraint(EqExpr::create(
+            read, ConstantExpr::alloc(it->second[i], Expr::Int8)));
       } else {
-        tmp.addConstraint(isSeed);
+        cm.addConstraint(isSeed);
       }
     }
   }
@@ -154,8 +154,9 @@ void SeedInfo::patchSeed(const ExecutionState &state,
 #ifndef NDEBUG
   {
     bool res;
-    bool success = 
-      solver->mayBeTrue(state, assignment.evaluate(condition), res);
+    bool success =
+        solver->mayBeTrue(state.constraints, assignment.evaluate(condition),
+                          res, state.queryMetaData);
     assert(success && "FIXME: Unhandled solver failure");            
     (void) success;
     assert(res && "seed patching failed");

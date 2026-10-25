@@ -6,33 +6,37 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#include "klee/util/Assignment.h"
-#include "klee/Constraints.h"
-#include "klee/Solver.h"
-#include "klee/SolverImpl.h"
+
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/Assignment.h"
+#include "klee/Solver/Solver.h"
+#include "klee/Solver/SolverImpl.h"
+
+#include <memory>
+#include <utility>
 #include <vector>
 
 namespace klee {
 
 class AssignmentValidatingSolver : public SolverImpl {
 private:
-  Solver *solver;
+  std::unique_ptr<Solver> solver;
   void dumpAssignmentQuery(const Query &query, const Assignment &assignment);
 
 public:
-  AssignmentValidatingSolver(Solver *_solver) : solver(_solver) {}
-  ~AssignmentValidatingSolver() { delete solver; }
+  AssignmentValidatingSolver(std::unique_ptr<Solver> solver)
+      : solver(std::move(solver)) {}
 
-  bool computeValidity(const Query &, Solver::Validity &result);
-  bool computeTruth(const Query &, bool &isValid);
-  bool computeValue(const Query &, ref<Expr> &result);
+  bool computeValidity(const Query &, Solver::Validity &result) override;
+  bool computeTruth(const Query &, bool &isValid) override;
+  bool computeValue(const Query &, ref<Expr> &result) override;
   bool computeInitialValues(const Query &,
                             const std::vector<const Array *> &objects,
-                            std::vector<std::vector<unsigned char> > &values,
-                            bool &hasSolution);
-  SolverRunStatus getOperationStatusCode();
-  char *getConstraintLog(const Query &);
-  void setCoreSolverTimeout(double timeout);
+                            std::vector<std::vector<unsigned char>> &values,
+                            bool &hasSolution) override;
+  SolverRunStatus getOperationStatusCode() override;
+  std::string getConstraintLog(const Query &) override;
+  void setCoreSolverTimeout(time::Span timeout) override;
 };
 
 // TODO: use computeInitialValues for all queries for more stress testing
@@ -61,10 +65,7 @@ bool AssignmentValidatingSolver::computeInitialValues(
   // we can't compute a constant and flag this as a problem.
   Assignment assignment(objects, values, /*_allowFreeValues=*/true);
   // Check computed assignment satisfies query
-  for (ConstraintManager::const_iterator it = query.constraints.begin(),
-                                         ie = query.constraints.end();
-       it != ie; ++it) {
-    ref<Expr> constraint = *it;
+  for (const auto &constraint : query.constraints) {
     ref<Expr> constraintEvaluated = assignment.evaluate(constraint);
     ConstantExpr *CE = dyn_cast<ConstantExpr>(constraintEvaluated);
     if (CE == NULL) {
@@ -122,21 +123,17 @@ void AssignmentValidatingSolver::dumpAssignmentQuery(
     const Query &query, const Assignment &assignment) {
   // Create a Query that is augmented with constraints that
   // enforce the given assignment.
-  std::vector<ref<Expr> > constraints;
-  assignment.createConstraintsFromAssignment(constraints);
+  auto constraints = assignment.createConstraintsFromAssignment();
+
   // Add Constraints from `query`
-  for (ConstraintManager::const_iterator it = query.constraints.begin(),
-                                         ie = query.constraints.end();
-       it != ie; ++it) {
-    constraints.push_back(*it);
-  }
-  ConstraintManager augmentedConstraints(constraints);
-  Query augmentedQuery(augmentedConstraints, query.expr);
+  for (const auto &constraint : query.constraints)
+    constraints.push_back(constraint);
+
+  Query augmentedQuery(constraints, query.expr);
 
   // Ask the solver for the log for this query.
-  char *logText = solver->getConstraintLog(augmentedQuery);
-  llvm::errs() << "Query with assignment as constraints:\n" << logText << "\n";
-  free(logText);
+  llvm::errs() << "Query with assignment as constraints:\n"
+               << solver->getConstraintLog(augmentedQuery) << "\n";
 }
 
 SolverImpl::SolverRunStatus
@@ -144,15 +141,17 @@ AssignmentValidatingSolver::getOperationStatusCode() {
   return solver->impl->getOperationStatusCode();
 }
 
-char *AssignmentValidatingSolver::getConstraintLog(const Query &query) {
+std::string AssignmentValidatingSolver::getConstraintLog(const Query &query) {
   return solver->impl->getConstraintLog(query);
 }
 
-void AssignmentValidatingSolver::setCoreSolverTimeout(double timeout) {
+void AssignmentValidatingSolver::setCoreSolverTimeout(time::Span timeout) {
   return solver->impl->setCoreSolverTimeout(timeout);
 }
 
-Solver *createAssignmentValidatingSolver(Solver *s) {
-  return new Solver(new AssignmentValidatingSolver(s));
+std::unique_ptr<Solver>
+createAssignmentValidatingSolver(std::unique_ptr<Solver> s) {
+  return std::make_unique<Solver>(
+      std::make_unique<AssignmentValidatingSolver>(std::move(s)));
 }
 }

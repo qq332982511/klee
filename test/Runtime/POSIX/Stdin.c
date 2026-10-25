@@ -1,4 +1,4 @@
-// RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t.bc
+// RUN: %clang %s -emit-llvm %O0opt -c -o %t.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --libc=uclibc --posix-runtime --exit-on-error %t.bc --sym-stdin 4 > %t.log
 // RUN: grep "mode:file" %t.log
@@ -9,11 +9,12 @@
 // RUN: grep "mode:lnk" %t.log
 // RUN: grep "read:sym:yes" %t.log
 // RUN: grep "read:sym:no" %t.log
-
-#include <stdio.h>
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 int main(int argc, char **argv) {
   struct stat stats;

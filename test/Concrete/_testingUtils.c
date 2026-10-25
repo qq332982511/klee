@@ -1,4 +1,4 @@
-// RUN: %llvmgcc -D_TESTINGUTILS_TEST %s -o %t
+// RUN: %clang -D_TESTINGUTILS_TEST %s -o %t
 // RUN: %t | FileCheck %s
 
 #include <stdint.h>
@@ -69,12 +69,11 @@ int main(int argc, char *argv[])
         printf("print_i1(0)\n");
         print_i1(0);
         // CHECK: i1(0)
-        // CHECK_NEXT: 0
+        // CHECK-NEXT: 0
 
         printf("print_i1(1)\n");
         print_i1(1);
         // CHECK: i1(1)
-        // CHECK_NEXT: 1
-
+        // CHECK-NEXT: 1
 }
 #endif

@@ -1,14 +1,14 @@
-// RUN: %llvmgcc %s -emit-llvm -O0 -DCOND_EXIT -c -o %t1.bc
+// RUN: %clang %s -emit-llvm %O0opt -DCOND_EXIT -c -o %t1.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --write-paths %t1.bc > %t3.good
 
-// RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t2.bc
+// RUN: %clang %s -emit-llvm %O0opt -c -o %t2.bc
 // RUN: rm -rf %t.klee-out-2
 // RUN: %klee --output-dir=%t.klee-out-2 --replay-path %t.klee-out/test000001.path %t2.bc > %t3.log
 // RUN: diff %t3.log %t3.good
-
-#include <unistd.h>
+#include "klee/klee.h"
 #include <stdio.h>
+#include <unistd.h>
 
 void cond_exit() {
 #ifdef COND_EXIT
@@ -20,7 +20,7 @@ int main() {
   int res = 1;
   int x;
 
-  klee_make_symbolic(&x, sizeof x);
+  klee_make_symbolic(&x, sizeof x, "x");
 
   if (x&1) res *= 2; else cond_exit();
   if (x&2) res *= 3; else cond_exit();

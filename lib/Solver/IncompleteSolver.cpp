@@ -7,9 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/IncompleteSolver.h"
+#include "klee/Solver/IncompleteSolver.h"
 
-#include "klee/Constraints.h"
+#include "klee/Expr/Constraints.h"
+
+#include <utility>
 
 using namespace klee;
 using namespace llvm;
@@ -58,16 +60,9 @@ IncompleteSolver::computeValidity(const Query& query) {
 
 /***/
 
-StagedSolverImpl::StagedSolverImpl(IncompleteSolver *_primary, 
-                                   Solver *_secondary) 
-  : primary(_primary),
-    secondary(_secondary) {
-}
-
-StagedSolverImpl::~StagedSolverImpl() {
-  delete primary;
-  delete secondary;
-}
+StagedSolverImpl::StagedSolverImpl(std::unique_ptr<IncompleteSolver> primary,
+                                   std::unique_ptr<Solver> secondary)
+    : primary(std::move(primary)), secondary(std::move(secondary)) {}
 
 bool StagedSolverImpl::computeTruth(const Query& query, bool &isValid) {
   IncompleteSolver::PartialValidity trueResult = primary->computeTruth(query); 
@@ -139,11 +134,11 @@ SolverImpl::SolverRunStatus StagedSolverImpl::getOperationStatusCode() {
   return secondary->impl->getOperationStatusCode();
 }
 
-char *StagedSolverImpl::getConstraintLog(const Query& query) {
+std::string StagedSolverImpl::getConstraintLog(const Query& query) {
   return secondary->impl->getConstraintLog(query);
 }
 
-void StagedSolverImpl::setCoreSolverTimeout(double timeout) {
+void StagedSolverImpl::setCoreSolverTimeout(time::Span timeout) {
   secondary->impl->setCoreSolverTimeout(timeout);
 }
 

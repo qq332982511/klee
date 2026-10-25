@@ -7,12 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __UTIL_Z3BUILDER_H__
-#define __UTIL_Z3BUILDER_H__
+#ifndef KLEE_Z3BUILDER_H
+#define KLEE_Z3BUILDER_H
 
-#include "klee/util/ExprHashMap.h"
-#include "klee/util/ArrayExprHash.h"
 #include "klee/Config/config.h"
+#include "klee/Expr/ArrayExprHash.h"
+#include "klee/Expr/ExprHashMap.h"
+
+#include <unordered_map>
 #include <z3.h>
 
 namespace klee {
@@ -72,7 +74,7 @@ public:
   // To be specialised
   void dump();
 
-  operator T() { return node; }
+  operator T() const { return node; }
 };
 
 // Specialise for Z3_sort
@@ -81,19 +83,13 @@ template <> inline ::Z3_ast Z3NodeHandle<Z3_sort>::as_ast() {
   // instead to simplify our implementation but this seems cleaner.
   return ::Z3_sort_to_ast(context, node);
 }
-template <> inline void Z3NodeHandle<Z3_sort>::dump() {
-  llvm::errs() << "Z3SortHandle:\n" << ::Z3_sort_to_string(context, node)
-               << "\n";
-}
 typedef Z3NodeHandle<Z3_sort> Z3SortHandle;
+template <> void Z3NodeHandle<Z3_sort>::dump() __attribute__((used));
 
 // Specialise for Z3_ast
 template <> inline ::Z3_ast Z3NodeHandle<Z3_ast>::as_ast() { return node; }
-template <> inline void Z3NodeHandle<Z3_ast>::dump() {
-  llvm::errs() << "Z3ASTHandle:\n" << ::Z3_ast_to_string(context, as_ast())
-               << "\n";
-}
 typedef Z3NodeHandle<Z3_ast> Z3ASTHandle;
+template <> void Z3NodeHandle<Z3_ast>::dump() __attribute__((used));
 
 class Z3ArrayExprHash : public ArrayExprHash<Z3ASTHandle> {
 
@@ -171,11 +167,13 @@ private:
   Z3SortHandle getBvSort(unsigned width);
   Z3SortHandle getArraySort(Z3SortHandle domainSort, Z3SortHandle rangeSort);
   bool autoClearConstructCache;
+  std::string z3LogInteractionFile;
 
 public:
   Z3_context ctx;
-
-  Z3Builder(bool autoClearConstructCache = true);
+  std::unordered_map<const Array *, std::vector<Z3ASTHandle> >
+      constant_array_assertions;
+  Z3Builder(bool autoClearConstructCache, const char *z3LogInteractionFile);
   ~Z3Builder();
 
   Z3ASTHandle getTrue();
@@ -193,4 +191,4 @@ public:
 };
 }
 
-#endif
+#endif /* KLEE_Z3BUILDER_H */

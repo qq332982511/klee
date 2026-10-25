@@ -6,39 +6,58 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-klee_add_component(kleeModule
+set(KLEE_MODULE_COMPONENT_SRCS
   Checks.cpp
+  FunctionAlias.cpp
   InstructionInfoTable.cpp
+  InstructionOperandTypeCheckPass.cpp
   IntrinsicCleaner.cpp
   KInstruction.cpp
   KModule.cpp
   LowerSwitch.cpp
   ModuleUtil.cpp
-  Optimize.cpp
+  OptNone.cpp
   PhiCleaner.cpp
   RaiseAsm.cpp
 )
 
-set(LLVM_COMPONENTS
+if ("${LLVM_VERSION_MAJOR}" LESS 17)
+  LIST(APPEND KLEE_MODULE_COMPONENT_SRCS
+          InstrumentLegacy.cpp
+          OptimizeLegacy.cpp
+  )
+else ()
+  LIST(APPEND KLEE_MODULE_COMPONENT_SRCS
+          Instrument.cpp
+          Optimize.cpp
+  )
+endif ()
+
+
+add_library(kleeModule
+  ${KLEE_MODULE_COMPONENT_SRCS}
+)
+
+llvm_config(kleeModule "${USE_LLVM_SHARED}"
   bitreader
   bitwriter
   codegen
   ipo
+  irreader
   linker
   support
-)
+  scalaropts
+  instcombine
+  transformutils
+  analysis
+  object
+  mc
+  binaryformat
+  )
 
-if ("${LLVM_PACKAGE_VERSION}" VERSION_EQUAL "3.3" OR
-    "${LLVM_PACKAGE_VERSION}" VERSION_GREATER "3.3")
-  list(APPEND LLVM_COMPONENTS irreader)
-endif()
-klee_get_llvm_libs(LLVM_LIBS ${LLVM_COMPONENTS})
-target_link_libraries(kleeModule PUBLIC ${LLVM_LIBS})
 target_link_libraries(kleeModule PRIVATE
   kleeSupport
-  # FIXME:
-  # There is a circular dependency between `kleeModule` and `kleeCore`.
-  # `ModuleUtil.cpp` uses `klee::SpecialFunctionHandler` (in `kleeCore`) but
-  # `kleeCore` uses `kleeModule`.
-  kleeCore
 )
+target_include_directories(kleeModule PRIVATE ${KLEE_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
+target_compile_options(kleeModule PRIVATE ${KLEE_COMPONENT_CXX_FLAGS})
+target_compile_definitions(kleeModule PRIVATE ${KLEE_COMPONENT_CXX_DEFINES})

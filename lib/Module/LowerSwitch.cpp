@@ -16,11 +16,13 @@
 
 #include "Passes.h"
 #include "klee/Config/Version.h"
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "klee/Support/CompilerWarning.h"
+DISABLE_WARNING_PUSH
+DISABLE_WARNING_DEPRECATED_DECLARATIONS
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#else
-#include "llvm/LLVMContext.h"
-#endif
+DISABLE_WARNING_POP
+
 #include <algorithm>
 
 using namespace llvm;
@@ -44,7 +46,7 @@ bool LowerSwitchPass::runOnFunction(Function &F) {
   bool changed = false;
 
   for (Function::iterator I = F.begin(), E = F.end(); I != E; ) {
-    BasicBlock *cur = static_cast<BasicBlock *>(I);
+    BasicBlock *cur = &*I;
     I++; // Advance over block so we don't traverse new blocks
 
     if (SwitchInst *SI = dyn_cast<SwitchInst>(cur->getTerminator())) {
@@ -64,16 +66,15 @@ void LowerSwitchPass::switchConvert(CaseItr begin, CaseItr end,
 {
   BasicBlock *curHead = defaultBlock;
   Function *F = origBlock->getParent();
-  
+  llvm::IRBuilder<> Builder(defaultBlock);
+
   // iterate through all the cases, creating a new BasicBlock for each
   for (CaseItr it = begin; it < end; ++it) {
-    BasicBlock *newBlock = BasicBlock::Create(F->getContext(), "NodeBlock");
-    Function::iterator FI = origBlock;
-    F->getBasicBlockList().insert(++FI, newBlock);
-    
-    ICmpInst *cmpInst = 
-      new ICmpInst(*newBlock, ICmpInst::ICMP_EQ, value, it->value, "case.cmp");
-    BranchInst::Create(it->block, curHead, cmpInst, newBlock);
+    BasicBlock *newBlock = BasicBlock::Create(F->getContext(), "NodeBlock", F);
+
+    Builder.SetInsertPoint(newBlock);
+    auto cmpValue = Builder.CreateICmpEQ(value, it->value, "case.cmp");
+    Builder.CreateCondBr(cmpValue, it->block, curHead);
 
     // If there were any PHI nodes in this successor, rewrite one entry
     // from origBlock to come from newBlock.
@@ -89,7 +90,8 @@ void LowerSwitchPass::switchConvert(CaseItr begin, CaseItr end,
   }
 
   // Branch to our shiny new if-then stuff...
-  BranchInst::Create(curHead, origBlock);
+  Builder.SetInsertPoint(origBlock);
+  Builder.CreateBr(curHead);
 }
 
 // processSwitchInst - Replace the specified switch instruction with a sequence
@@ -103,10 +105,11 @@ void LowerSwitchPass::processSwitchInst(SwitchInst *SI) {
 
   // Create a new, empty default block so that the new hierarchy of
   // if-then statements go to this and the PHI nodes are happy.
-  BasicBlock* newDefault = BasicBlock::Create(F->getContext(), "newDefault");
+  BasicBlock *newDefault =
+      BasicBlock::Create(F->getContext(), "newDefault", F, defaultBlock);
+  llvm::IRBuilder<> Builder(newDefault);
 
-  F->getBasicBlockList().insert(defaultBlock, newDefault);
-  BranchInst::Create(defaultBlock, newDefault);
+  Builder.CreateBr(defaultBlock);
 
   // If there is an entry in any PHI nodes for the default edge, make sure
   // to update them as well.
@@ -118,27 +121,20 @@ void LowerSwitchPass::processSwitchInst(SwitchInst *SI) {
   }
   
   CaseVector cases;
-  
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
-  for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i)
+
+  for (auto i : SI->cases())
     cases.push_back(SwitchCase(i.getCaseValue(),
                                i.getCaseSuccessor()));
-#else
-  for (unsigned i = 1; i < SI->getNumSuccessors(); ++i)  
-    cases.push_back(SwitchCase(SI->getSuccessorValue(i),
-                               SI->getSuccessor(i)));
-#endif
   
   // reverse cases, as switchConvert constructs a chain of
   //   basic blocks by appending to the front. if we reverse,
   //   the if comparisons will happen in the same order
   //   as the cases appear in the switch
   std::reverse(cases.begin(), cases.end());
-  
-  switchConvert(cases.begin(), cases.end(), switchValue, origBlock, newDefault);
 
+  switchConvert(cases.begin(), cases.end(), switchValue, origBlock, newDefault);
   // We are now done with the switch instruction, so delete it
-  origBlock->getInstList().erase(SI);
+  SI->eraseFromParent();
 }
 
 }

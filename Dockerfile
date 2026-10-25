@@ -1,135 +1,74 @@
-FROM ubuntu:14.04
-MAINTAINER Dan Liew <daniel.liew@imperial.ac.uk>
+FROM ghcr.io/klee/llvm:180_O_D_A_ubuntu_jammy-20251001 AS llvm_base
+FROM ghcr.io/klee/gtest:1.16.0_ubuntu_jammy-20251001 AS gtest_base
+FROM ghcr.io/klee/uclibc:klee_uclibc_v1.4_180_ubuntu_jammy-20251001 AS uclibc_base
+FROM ghcr.io/klee/tcmalloc:2.9.1_ubuntu_jammy-20251001 AS tcmalloc_base
+FROM ghcr.io/klee/stp:2.3.4_ubuntu_jammy-20251001 AS stp_base
+FROM ghcr.io/klee/z3:4.8.15_ubuntu_jammy-20251001 AS z3_base
+FROM ghcr.io/klee/libcxx:180_ubuntu_jammy-20251001 AS libcxx_base
+FROM ghcr.io/klee/sqlite:3400100_ubuntu_jammy-20251001 AS sqlite3_base
+FROM llvm_base AS intermediate
+COPY --from=gtest_base /tmp /tmp/
+COPY --from=uclibc_base /tmp /tmp/
+COPY --from=tcmalloc_base /tmp /tmp/
+COPY --from=stp_base /tmp /tmp/
+COPY --from=z3_base /tmp /tmp/
+COPY --from=libcxx_base /tmp /tmp/
+COPY --from=sqlite3_base /tmp /tmp/
+ENV COVERAGE=0
+ENV USE_TCMALLOC=1
+ENV BASE=/tmp
+ENV LLVM_VERSION=18.0
+ENV ENABLE_DOXYGEN=1
+ENV ENABLE_OPTIMIZED=1
+ENV ENABLE_DEBUG=1
+ENV DISABLE_ASSERTIONS=0
+ENV REQUIRES_RTTI=0
+ENV SOLVERS=STP:Z3
+ENV GTEST_VERSION=1.16.0
+ENV UCLIBC_VERSION=klee_uclibc_v1.3
+ENV TCMALLOC_VERSION=2.9.1
+ENV SANITIZER_BUILD=
+ENV STP_VERSION=2.3.4
+ENV MINISAT_VERSION=master
+ENV Z3_VERSION=4.8.15
+ENV USE_LIBCXX=1
+ENV KLEE_RUNTIME_BUILD="Debug+Asserts"
+ENV SQLITE_VERSION=3400100
+LABEL maintainer="KLEE Developers"
 
-# FIXME: Docker doesn't currently offer a way to
-# squash the layers from within a Dockerfile so
-# the resulting image is unnecessarily large!
-
-ENV LLVM_VERSION=3.4 \
-    SOLVERS=STP:Z3 \
-    STP_VERSION=2.1.2 \
-    DISABLE_ASSERTIONS=0 \
-    ENABLE_OPTIMIZED=1 \
-    KLEE_UCLIBC=klee_uclibc_v1.0.0 \
-    KLEE_SRC=/home/klee/klee_src \
-    COVERAGE=0 \
-    BUILD_DIR=/home/klee/klee_build \
-    USE_CMAKE=1 \
-    ASAN_BUILD=0 \
-    UBSAN_BUILD=0 \
-    TRAVIS_OS_NAME=linux
-
-RUN apt-get update && \
-    apt-get -y --no-install-recommends install \
-        clang-${LLVM_VERSION} \
-        llvm-${LLVM_VERSION} \
-        llvm-${LLVM_VERSION}-dev \
-        llvm-${LLVM_VERSION}-runtime \
-        llvm \
-        libcap-dev \
-        git \
-        subversion \
-        cmake \
-        make \
-        libboost-program-options-dev \
-        python3 \
-        python3-dev \
-        python3-pip \
-        perl \
-        flex \
-        bison \
-        libncurses-dev \
-        zlib1g-dev \
-        patch \
-        wget \
-        unzip \
-        binutils && \
-    pip3 install -U lit tabulate && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 50 && \
-    ( wget -O - http://download.opensuse.org/repositories/home:delcypher:z3/xUbuntu_14.04/Release.key | apt-key add - ) && \
-    echo 'deb http://download.opensuse.org/repositories/home:/delcypher:/z3/xUbuntu_14.04/ /' >> /etc/apt/sources.list.d/z3.list && \
-    apt-get update
-
+# TODO remove adding sudo package
 # Create ``klee`` user for container with password ``klee``.
-# and give it password-less sudo access (temporarily so we can use the TravisCI scripts)
-RUN useradd -m klee && \
+# and give it password-less sudo access (temporarily so we can use the CI scripts)
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install sudo less emacs-nox vim-nox file python3-venv && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -m klee && \
     echo klee:klee | chpasswd && \
     cp /etc/sudoers /etc/sudoers.bak && \
     echo 'klee  ALL=(root) NOPASSWD: ALL' >> /etc/sudoers
-USER klee
-WORKDIR /home/klee
 
 # Copy across source files needed for build
-RUN mkdir ${KLEE_SRC}
-ADD / ${KLEE_SRC}
+COPY --chown=klee:klee . /tmp/klee_src/
 
-# Set klee user to be owner
-RUN sudo chown --recursive klee: ${KLEE_SRC}
-
-# Create build directory
-RUN mkdir -p ${BUILD_DIR}
-
-# Build/Install SMT solvers (use TravisCI script)
-RUN cd ${BUILD_DIR} && ${KLEE_SRC}/.travis/solvers.sh
-
-# Install testing utils (use TravisCI script)
-RUN cd ${BUILD_DIR} && mkdir test-utils && cd test-utils && \
-    ${KLEE_SRC}/.travis/testing-utils.sh
-
-# FIXME: All these hacks need to be removed. Once we no longer
-# need to support KLEE's old build system they can be removed.
-
-# FIXME: This is a nasty hack so KLEE's configure and build finds
-# LLVM's headers file, libraries and tools
-RUN sudo mkdir -p /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin && \
-    sudo ln -s /usr/bin/llvm-config /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/llvm-config && \
-    sudo ln -s /usr/bin/llvm-dis /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/llvm-dis && \
-    sudo ln -s /usr/bin/llvm-as /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/llvm-as && \
-    sudo ln -s /usr/bin/llvm-link /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/llvm-link && \
-    sudo ln -s /usr/bin/llvm-ar /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/llvm-ar && \
-    sudo ln -s /usr/bin/opt /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/opt && \
-    sudo ln -s /usr/bin/lli /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin/lli && \
-    sudo mkdir -p /usr/lib/llvm-${LLVM_VERSION}/build/include && \
-    sudo ln -s /usr/include/llvm-${LLVM_VERSION}/llvm /usr/lib/llvm-${LLVM_VERSION}/build/include/llvm && \
-    sudo ln -s /usr/include/llvm-c-${LLVM_VERSION}/llvm-c /usr/lib/llvm-${LLVM_VERSION}/build/include/llvm-c && \
-    for static_lib in /usr/lib/llvm-${LLVM_VERSION}/lib/*.a ; do sudo ln -s ${static_lib} /usr/lib/`basename ${static_lib}`; done
-
-# FIXME: This is **really gross**. The Official Ubuntu LLVM packages don't ship
-# with ``FileCheck`` or the ``not`` tools so we have to hack building these
-# into KLEE's build system in order for the tests to pass
-RUN [ "X${USE_CMAKE}" != "X1" ] && ( cd ${KLEE_SRC}/tools && \
-    for tool in FileCheck not; do \
-        svn export \
-        http://llvm.org/svn/llvm-project/llvm/branches/release_34/utils/${tool} ${tool} ; \
-        sed -i 's/^USEDLIBS.*$/LINK_COMPONENTS = support/' ${tool}/Makefile; \
-    done && \
-    sed -i '0,/^PARALLEL_DIRS/a PARALLEL_DIRS += FileCheck not' Makefile ) || echo "Skipping hack"
-
-# FIXME: The current TravisCI script expects clang-${LLVM_VERSION} to exist
-RUN sudo ln -s /usr/bin/clang /usr/bin/clang-${LLVM_VERSION} && \
-    sudo ln -s /usr/bin/clang++ /usr/bin/clang++-${LLVM_VERSION}
-
-# Build KLEE (use TravisCI script)
-RUN cd ${BUILD_DIR} && ${KLEE_SRC}/.travis/klee.sh
-
-# Revoke password-less sudo and Set up sudo access for the ``klee`` user so it
-# requires a password
-USER root
-RUN mv /etc/sudoers.bak /etc/sudoers && \
-    echo 'klee  ALL=(root) ALL' >> /etc/sudoers
 USER klee
+WORKDIR /home/klee
+# Build and set klee user to be owner
+RUN /tmp/klee_src/scripts/build/build.sh --debug --install-system-deps klee && \
+    python3 -m venv /home/klee/.venvs/klee && /home/klee/.venvs/klee/bin/pip install flask python-dateutil wllvm lit tabulate && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+
+ENV PATH="/home/klee/.venvs/klee/bin:$PATH:/tmp/llvm-180-install_O_D_A/bin:/home/klee/klee_build/bin"
+ENV BASE=/tmp
+# Add path to local LLVM installation - let system install precede local install
+RUN /bin/bash -c 'echo "export \"PATH=$PATH:$(cd ${BASE}/llvm-*-install*/bin/ && pwd)\" >> /home/klee/.bashrc"'
+
+# Add KLEE header files to system standard include folder
+RUN sudo /bin/bash -c 'ln -s /tmp/klee_src/include/klee /usr/include/'
+
+ENV LD_LIBRARY_PATH=/home/klee/klee_build/lib/
 
 # Add KLEE binary directory to PATH
-RUN [ "X${USE_CMAKE}" != "X1" ] && \
-  (echo 'export PATH=$PATH:'${BUILD_DIR}'/klee/Release+Asserts/bin' >> /home/klee/.bashrc) || \
-  (echo 'export PATH=$PATH:'${BUILD_DIR}'/klee/bin' >> /home/klee/.bashrc)
+RUN /bin/bash -c 'ln -s ${BASE}/klee_src /home/klee/ && ln -s ${BASE}/klee_build* /home/klee/klee_build'
 
-# Link klee to /usr/bin so that it can be used by docker run
-USER root
-RUN [ "X${USE_CMAKE}" != "X1" ] && \
-  (for executable in ${BUILD_DIR}/klee/Release+Asserts/bin/* ; do ln -s ${executable} /usr/bin/`basename ${executable}`; done) || \
-  (for executable in ${BUILD_DIR}/klee/bin/* ; do ln -s ${executable} /usr/bin/`basename ${executable}`; done)
-
-# Link klee to the libkleeRuntest library needed by docker run
-RUN [ "X${USE_CMAKE}" != "X1" ] && (ln -s ${BUILD_DIR}/klee/Release+Asserts/lib/libkleeRuntest.so /usr/lib/libkleeRuntest.so.1.0) || echo "Skipping hack"
-USER klee
+# TODO Remove when STP is fixed
+RUN /bin/bash -c 'echo "export LD_LIBRARY_PATH=$(cd ${BASE}/metaSMT-*-deps/stp-git-basic/lib/ && pwd):$LD_LIBRARY_PATH" >> /home/klee/.bashrc'

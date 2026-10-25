@@ -8,7 +8,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "QueryLoggingSolver.h"
-#include "klee/util/ExprSMTLIBPrinter.h"
+
+#include "klee/Expr/ExprSMTLIBPrinter.h"
+
+#include <memory>
+#include <utility>
 
 using namespace klee;
 
@@ -17,7 +21,6 @@ using namespace klee;
 class SMTLIBLoggingSolver : public QueryLoggingSolver
 {
         private:
-    
                 ExprSMTLIBPrinter printer;
 
                 virtual void printQuery(const Query& query,
@@ -40,21 +43,21 @@ class SMTLIBLoggingSolver : public QueryLoggingSolver
 
                         printer.generateOutput();
                 }    
-        
-	public:
-		SMTLIBLoggingSolver(Solver *_solver,
-                                    std::string path,
-                                    int queryTimeToLog)                
-		: QueryLoggingSolver(_solver, path, ";", queryTimeToLog)
-		{
-		  //Setup the printer
-		  printer.setOutput(logBuffer);
-		}
+
+public:
+  SMTLIBLoggingSolver(std::unique_ptr<Solver> solver, std::string path,
+                      time::Span queryTimeToLog, bool logTimedOut)
+      : QueryLoggingSolver(std::move(solver), std::move(path), ";",
+                           queryTimeToLog, logTimedOut) {
+    // Setup the printer
+    printer.setOutput(logBuffer);
+  }
 };
 
-
-Solver* klee::createSMTLIBLoggingSolver(Solver *_solver, std::string path,
-                                        int minQueryTimeToLog)
-{
-  return new Solver(new SMTLIBLoggingSolver(_solver, path, minQueryTimeToLog));
+std::unique_ptr<Solver>
+klee::createSMTLIBLoggingSolver(std::unique_ptr<Solver> solver,
+                                std::string path, time::Span minQueryTimeToLog,
+                                bool logTimedOut) {
+  return std::make_unique<Solver>(std::make_unique<SMTLIBLoggingSolver>(
+      std::move(solver), std::move(path), minQueryTimeToLog, logTimedOut));
 }

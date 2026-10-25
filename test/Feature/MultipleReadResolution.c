@@ -2,16 +2,17 @@
 // RUN: echo "x" >> %t1.res
 // RUN: echo "x" >> %t1.res
 // RUN: echo "x" >> %t1.res
-// RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t1.bc
+// RUN: %clang %s -emit-llvm %O0opt -c -o %t1.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out %t1.bc > %t1.log
 // RUN: diff %t1.res %t1.log
 
+#include "klee/klee.h"
 #include <stdio.h>
-
+#include <stdlib.h>
 unsigned klee_urange(unsigned start, unsigned end) {
   unsigned x;
-  klee_make_symbolic(&x, sizeof x);
+  klee_make_symbolic(&x, sizeof x, "x");
   if (x-start>=end-start) klee_silent_exit(0);
   return x;
 }
